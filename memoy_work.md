@@ -34,3 +34,7 @@
 - `apps/desktop/gui.py` Tkinter 기반 로컬 GUI 추가
 - 기능: 프로젝트/설정 파일 선택, 엔진 선택, 분석 실행, 경고/요약 JSON 표시
 - Help 메뉴에 연락처/제작자 정보 반영
+
+### GitHub 연동
+- 원격 저장소: https://github.com/Jolrin-Saram/code-struct-analysis-.git
+- main 브랜치 초기 푸시 완료
