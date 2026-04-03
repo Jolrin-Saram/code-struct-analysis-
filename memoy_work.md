@@ -50,3 +50,9 @@
 - 제외 패턴 강화: .vs, x64, Debug, Release, bin, obj 등
 - 위험->오류 가능 경로 flowchart 생성: risk_flowchart.mmd
 - GUI에 Error Flowchart(Mermaid) 표시 탭 추가
+
+### 배포/시각화 확인
+- 커밋: e246f82 (code-only risk visualization with flowchart output)
+- 원격 반영: origin/main push 완료
+- GUI 실행 확인: run_gui.ps1 직접 실행 시 타임아웃(창 이벤트 루프 유지)으로 정상 기동 패턴 확인
+- 산출물 확인: risk_heatmap.json / risk_findings.json / risk_flowchart.mmd 생성 확인
