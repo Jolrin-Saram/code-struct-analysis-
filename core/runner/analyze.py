@@ -9,7 +9,9 @@ from core.engine.codecharta_engine import CodeChartaEngine
 from core.engine.emerge_engine import EmergeEngine
 from core.engine.madge_engine import MadgeEngine
 from core.logging.logger import build_logger
+from core.runner.flowchart import build_error_flowchart, summarize_flow_edges
 from core.runner.report import append_run_history, timestamp_id, write_json
+from core.runner.risk_scan import scan_risks
 from core.runner.validate import build_warnings
 
 
@@ -47,7 +49,23 @@ def run_analysis(config: AnalysisConfig, workspace_root: Path) -> Path:
 
     engine = engines[config.engine]
     engine_result = engine.analyze(config, run_dir)
+
     static_warnings = build_warnings(config)
+    risk_report = scan_risks(config)
+    risk_summary = risk_report["summary"]
+    flowchart_text = build_error_flowchart(risk_report["findings"])
+    flow_edges = summarize_flow_edges(risk_report["findings"])
+
+    combined_warnings = static_warnings + engine_result.warnings
+    if risk_summary["total_findings"] > 0:
+        combined_warnings.append(
+            f"Risk findings detected: {risk_summary['total_findings']} across {risk_summary['files_with_risk']} files."
+        )
+
+    artifacts = dict(engine_result.artifacts)
+    artifacts["risk_findings"] = str(run_dir / "risk_findings.json")
+    artifacts["risk_heatmap"] = str(run_dir / "risk_heatmap.json")
+    artifacts["risk_flowchart"] = str(run_dir / "risk_flowchart.mmd")
 
     payload = {
         "run_id": run_id,
@@ -56,8 +74,10 @@ def run_analysis(config: AnalysisConfig, workspace_root: Path) -> Path:
         "engine_requested": config.engine,
         "engine_used": engine_result.engine_name,
         "success": engine_result.success,
-        "warnings": static_warnings + engine_result.warnings,
-        "artifacts": engine_result.artifacts,
+        "warnings": combined_warnings,
+        "risk_summary": risk_summary,
+        "risk_flow_edges": flow_edges,
+        "artifacts": artifacts,
         "metrics": engine_result.metrics,
         "command": engine_result.command,
         "stdout_tail": engine_result.stdout[-2000:],
@@ -66,6 +86,9 @@ def run_analysis(config: AnalysisConfig, workspace_root: Path) -> Path:
 
     write_json(run_dir / "summary.json", payload)
     write_json(run_dir / "warnings.json", {"warnings": payload["warnings"]})
+    write_json(run_dir / "risk_findings.json", {"findings": risk_report["findings"]})
+    write_json(run_dir / "risk_heatmap.json", {"heatmap": risk_report["heatmap"]})
+    (run_dir / "risk_flowchart.mmd").write_text(flowchart_text, encoding="utf-8")
 
     append_run_history(outputs_root / "run_history.jsonl", payload)
 
@@ -73,8 +96,12 @@ def run_analysis(config: AnalysisConfig, workspace_root: Path) -> Path:
     latest_dir.mkdir(parents=True, exist_ok=True)
     write_json(latest_dir / "summary.json", payload)
     (latest_dir / "latest_run.txt").write_text(run_id, encoding="utf-8")
+    write_json(latest_dir / "risk_findings.json", {"findings": risk_report["findings"]})
+    write_json(latest_dir / "risk_heatmap.json", {"heatmap": risk_report["heatmap"]})
+    (latest_dir / "risk_flowchart.mmd").write_text(flowchart_text, encoding="utf-8")
 
     logger.info("Warnings: %s", len(payload["warnings"]))
+    logger.info("Risk findings: %s", risk_summary["total_findings"])
     logger.info("Analysis completed. Run directory: %s", run_dir)
 
     return run_dir

@@ -20,7 +20,7 @@ class EmergeEngine(EngineBase):
 
         executable = config.emerge_command[0] if config.emerge_command else "emerge"
         if shutil.which(executable) is None:
-            fallback = self._local_structure_fallback(project, run_dir, config.exclude)
+            fallback = self._local_structure_fallback(project, run_dir, config)
             fallback.warnings.insert(
                 0,
                 "Emerge executable not found. Local fallback analysis was used.",
@@ -58,7 +58,7 @@ class EmergeEngine(EngineBase):
                 f"Emerge failed with exit code {proc.returncode}. See run log for stderr details."
             )
             if not config.fail_on_engine_error:
-                fallback = self._local_structure_fallback(project, run_dir, config.exclude)
+                fallback = self._local_structure_fallback(project, run_dir, config)
                 fallback.warnings = result.warnings + fallback.warnings
                 fallback.command = command
                 fallback.stdout = proc.stdout
@@ -67,8 +67,10 @@ class EmergeEngine(EngineBase):
 
         return result
 
-    def _local_structure_fallback(self, project: Path, run_dir: Path, excludes: list[str]) -> EngineResult:
-        excluded = set(excludes)
+    def _local_structure_fallback(self, project: Path, run_dir: Path, config: AnalysisConfig) -> EngineResult:
+        excluded = set(config.exclude)
+        allowed_exts = config.normalized_code_extensions()
+
         file_count = 0
         dir_count = 0
         total_size = 0
@@ -80,12 +82,17 @@ class EmergeEngine(EngineBase):
             if path.is_dir():
                 dir_count += 1
                 continue
+
+            if config.code_only and path.suffix.lower() not in allowed_exts:
+                continue
+
             file_count += 1
             total_size += path.stat().st_size
             ext_counter[path.suffix.lower() or "<no_ext>"] += 1
 
         summary = {
             "project": str(project),
+            "scope": "code-only" if config.code_only else "all-files",
             "file_count": file_count,
             "directory_count": dir_count,
             "total_bytes": total_size,

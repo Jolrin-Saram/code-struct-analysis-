@@ -38,3 +38,15 @@
 ### GitHub 연동
 - 원격 저장소: https://github.com/Jolrin-Saram/code-struct-analysis-.git
 - main 브랜치 초기 푸시 완료
+
+### 위험 시각화 기능 강화
+- 대상 코드 수정 없이 read-only 스캔으로 위험 라인 탐지 추가
+- 산출물: risk_findings.json, risk_heatmap.json
+- GUI에 Risk Visualization 탭 추가(파일별 히트맵 + 라인별 위험 목록)
+
+### 코드 전용 분석 범위 강화
+- 대상 파일 범위를 코드 확장자로 제한 (C/C++/Header/Python/Java/R)
+- Python 확장자 추가: .pyw, .pyi, .pyx, .pxd
+- 제외 패턴 강화: .vs, x64, Debug, Release, bin, obj 등
+- 위험->오류 가능 경로 flowchart 생성: risk_flowchart.mmd
+- GUI에 Error Flowchart(Mermaid) 표시 탭 추가

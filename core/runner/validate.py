@@ -12,11 +12,17 @@ SECRET_PATTERNS = [
     re.compile(r"(?i)password\s*[:=]\s*['\"][^'\"]+['\"]"),
 ]
 
-TEXT_EXTS = {".py", ".js", ".ts", ".tsx", ".jsx", ".java", ".go", ".rb", ".cs", ".cpp", ".c", ".h", ".md", ".txt", ".json", ".yaml", ".yml", ".toml", ".ini", ".cfg"}
-
 
 def _is_excluded(path: Path, excludes: list[str]) -> bool:
     return any(part in excludes for part in path.parts)
+
+
+def _is_code_file(path: Path, config: AnalysisConfig) -> bool:
+    if not path.is_file():
+        return False
+    if not config.code_only:
+        return True
+    return path.suffix.lower() in config.normalized_code_extensions()
 
 
 def build_warnings(config: AnalysisConfig) -> list[str]:
@@ -41,36 +47,36 @@ def build_warnings(config: AnalysisConfig) -> list[str]:
         rel_depth = len(path.relative_to(project).parts)
         max_depth = max(max_depth, rel_depth)
 
-        if path.is_file():
-            try:
-                size = path.stat().st_size
-            except OSError:
-                continue
+        if not _is_code_file(path, config):
+            continue
 
-            if size > large_file_threshold:
-                warnings.append(
-                    f"Large file detected: {path} ({size / (1024 * 1024):.2f} MB)."
-                )
+        try:
+            size = path.stat().st_size
+        except OSError:
+            continue
 
-            if path.suffix.lower() in TEXT_EXTS:
-                try:
-                    content = path.read_text(encoding="utf-8", errors="ignore")
-                except OSError:
-                    continue
+        if size > large_file_threshold:
+            warnings.append(
+                f"Large code file detected: {path} ({size / (1024 * 1024):.2f} MB)."
+            )
 
-                if "TODO" in content or "FIXME" in content:
-                    warnings.append(f"TODO/FIXME marker found: {path}")
+        try:
+            content = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
 
-                for pattern in SECRET_PATTERNS:
-                    if pattern.search(content):
-                        warnings.append(f"Potential secret pattern found: {path}")
-                        break
+        if "TODO" in content or "FIXME" in content:
+            warnings.append(f"TODO/FIXME marker found: {path}")
+
+        for pattern in SECRET_PATTERNS:
+            if pattern.search(content):
+                warnings.append(f"Potential secret pattern found: {path}")
+                break
 
     if max_depth > config.warning_max_directory_depth:
         warnings.append(
             f"Directory depth is {max_depth}, exceeding threshold {config.warning_max_directory_depth}."
         )
 
-    # 중복 제거 (순서 유지)
     deduped = list(dict.fromkeys(warnings))
     return deduped

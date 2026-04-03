@@ -3,11 +3,38 @@ engine: emerge
 language: auto
 exclude:
   - .git
+  - .vs
+  - .idea
   - node_modules
   - dist
   - build
+  - bin
+  - obj
+  - out
+  - target
   - .venv
+  - venv
   - __pycache__
+  - x64
+  - Debug
+  - Release
+code_only: true
+code_extensions:
+  - .c
+  - .cc
+  - .cpp
+  - .cxx
+  - .h
+  - .hh
+  - .hpp
+  - .py
+  - .pyw
+  - .pyi
+  - .pyx
+  - .pxd
+  - .java
+  - .r
+  - .R
 output_dir: ./outputs/latest
 open_browser: false
 fail_on_engine_error: false
