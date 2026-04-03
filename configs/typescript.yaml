@@ -1,0 +1,11 @@
+﻿project_path: E:/code visualize/codeviz-local
+engine: emerge
+language: typescript
+exclude:
+  - .git
+  - node_modules
+  - dist
+  - build
+output_dir: ./outputs/latest
+open_browser: false
+locale: ko

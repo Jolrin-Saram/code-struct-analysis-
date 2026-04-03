@@ -1,0 +1,12 @@
+﻿project_path: E:/code visualize/codeviz-local
+engine: emerge
+language: python
+exclude:
+  - .git
+  - .venv
+  - __pycache__
+  - build
+  - dist
+output_dir: ./outputs/latest
+open_browser: false
+locale: ko

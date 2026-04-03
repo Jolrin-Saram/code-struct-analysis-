@@ -1,0 +1,19 @@
+﻿project_path: E:/code visualize/codeviz-local
+engine: emerge
+language: auto
+exclude:
+  - .git
+  - node_modules
+  - dist
+  - build
+  - .venv
+  - __pycache__
+output_dir: ./outputs/latest
+open_browser: false
+fail_on_engine_error: false
+locale: ko
+emerge_command:
+  - emerge
+emerge_args: []
+warning_max_file_size_mb: 2
+warning_max_directory_depth: 8
