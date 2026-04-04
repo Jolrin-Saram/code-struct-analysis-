@@ -56,3 +56,21 @@
 - 원격 반영: origin/main push 완료
 - GUI 실행 확인: run_gui.ps1 직접 실행 시 타임아웃(창 이벤트 루프 유지)으로 정상 기동 패턴 확인
 - 산출물 확인: risk_heatmap.json / risk_findings.json / risk_flowchart.mmd 생성 확인
+
+### GUI 반응/진행 처리 개선
+- 분석 실행 중 indeterminate progress bar 추가
+- 단계별 진행 메시지 표시: 입력검증/엔진실행/경고스캔/리스크스캔/리포트저장 등
+- 실패 시 예외 메시지 표시 후 결과 패널 초기화 및 상태 복구
+- config 경로 사전검증 실패시 즉시 오류 메시지 + 초기화
+
+### Progressbar 보정
+- indeterminate -> determinate(0~100) 변경
+- run_analysis 단계별 퍼센트 콜백 도입
+- warning/risk 파일 스캔 진행률(비율) 콜백 추가
+- GUI 상태표시: "메시지 (xx%)" 형식으로 갱신
+
+### 컨피그 검증 보강
+- config 경로 정규화(공백/따옴표 제거) 추가
+- config 파일 존재/확장자 검증(.yaml/.yml/.json)
+- project 경로 유효성 사전검증
+- load_config 사전 파싱검증 실패시 즉시 에러+초기화

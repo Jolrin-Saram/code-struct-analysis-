@@ -24,6 +24,7 @@ class CodevizGui(tk.Tk):
         self.config_var = tk.StringVar(value=str(self.workspace_root / "configs" / "default.yaml"))
         self.engine_var = tk.StringVar(value="emerge")
         self.locale_var = tk.StringVar(value="ko")
+        self.status_var = tk.StringVar(value="Ready")
 
         self._build_ui()
 
@@ -42,20 +43,34 @@ class CodevizGui(tk.Tk):
         controls = ttk.Frame(top)
         controls.grid(row=2, column=1, sticky=tk.W, pady=6)
         ttk.Label(controls, text="Engine").pack(side=tk.LEFT)
-        ttk.Combobox(
+        self.engine_combo = ttk.Combobox(
             controls,
             textvariable=self.engine_var,
             values=["emerge", "madge", "codecharta"],
             width=14,
             state="readonly",
-        ).pack(side=tk.LEFT, padx=(8, 16))
+        )
+        self.engine_combo.pack(side=tk.LEFT, padx=(8, 16))
         ttk.Label(controls, text="Locale").pack(side=tk.LEFT)
-        ttk.Combobox(controls, textvariable=self.locale_var, values=["ko", "en"], width=8, state="readonly").pack(side=tk.LEFT, padx=(8, 16))
+        self.locale_combo = ttk.Combobox(
+            controls,
+            textvariable=self.locale_var,
+            values=["ko", "en"],
+            width=8,
+            state="readonly",
+        )
+        self.locale_combo.pack(side=tk.LEFT, padx=(8, 16))
 
         self.run_btn = ttk.Button(top, text="Run Analysis", command=self._run_async)
         self.run_btn.grid(row=2, column=2, sticky=tk.E)
 
         top.columnconfigure(1, weight=1)
+
+        progress_row = ttk.Frame(self, padding=(10, 0, 10, 8))
+        progress_row.pack(fill=tk.X)
+        ttk.Label(progress_row, text="Progress").pack(side=tk.LEFT, padx=(0, 10))
+        self.progress = ttk.Progressbar(progress_row, mode="determinate", length=420, maximum=100)
+        self.progress.pack(side=tk.LEFT)
 
         tabs = ttk.Notebook(self)
         tabs.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
@@ -91,7 +106,6 @@ class CodevizGui(tk.Tk):
         self.summary_box.master.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
         self.summary_box.pack(fill=tk.BOTH, expand=True)
 
-        self.status_var = tk.StringVar(value="Ready")
         status = ttk.Label(self, textvariable=self.status_var, anchor=tk.W, padding=8)
         status.pack(fill=tk.X)
 
@@ -123,22 +137,83 @@ class CodevizGui(tk.Tk):
         if selected:
             self.config_var.set(selected)
 
-    def _run_async(self) -> None:
-        self.run_btn.configure(state=tk.DISABLED)
-        self.status_var.set("Running analysis...")
-        self._append_log("Analysis started from GUI.")
+    def _normalize_path_text(self, raw: str) -> Path:
+        cleaned = raw.strip().strip('"').strip("'")
+        return Path(cleaned)
 
-        worker = threading.Thread(target=self._run_sync, daemon=True)
+    def _set_busy(self, busy: bool) -> None:
+        if busy:
+            self.run_btn.configure(state=tk.DISABLED)
+            self.progress.configure(value=0)
+        else:
+            self.run_btn.configure(state=tk.NORMAL)
+
+    def _reset_view(self) -> None:
+        self.warn_box.delete("1.0", tk.END)
+        self.heatmap_box.delete("1.0", tk.END)
+        self.findings_box.delete("1.0", tk.END)
+        self.flowchart_box.delete("1.0", tk.END)
+        self.summary_box.delete("1.0", tk.END)
+        self.progress.configure(value=0)
+
+    def _run_async(self) -> None:
+        config_path = self._normalize_path_text(self.config_var.get())
+        project_path = self._normalize_path_text(self.project_var.get())
+
+        if not config_path.exists() or not config_path.is_file():
+            messagebox.showerror("Invalid Config", f"Config file not found:\n{config_path}")
+            self.status_var.set("Failed: invalid config path")
+            self._reset_view()
+            return
+
+        if config_path.suffix.lower() not in {".yaml", ".yml", ".json"}:
+            messagebox.showerror("Invalid Config", "Config file must be .yaml/.yml/.json")
+            self.status_var.set("Failed: invalid config extension")
+            self._reset_view()
+            return
+
+        if not project_path.exists() or not project_path.is_dir():
+            messagebox.showerror("Invalid Project", f"Project folder not found:\n{project_path}")
+            self.status_var.set("Failed: invalid project path")
+            self._reset_view()
+            return
+
+        try:
+            preloaded_config = load_config(config_path)
+        except Exception as exc:
+            messagebox.showerror("Config Parse Error", f"Cannot parse config:\n{config_path}\n\n{exc}")
+            self.status_var.set("Failed: config parse error")
+            self._reset_view()
+            return
+
+        self._set_busy(True)
+        self.status_var.set("Running analysis...")
+        self._append_log(f"Analysis started from GUI. Config={config_path}")
+
+        worker = threading.Thread(
+            target=lambda: self._run_sync(preloaded_config, project_path),
+            daemon=True,
+        )
         worker.start()
 
-    def _run_sync(self) -> None:
+    def _progress_update(self, message: str, percent: float) -> None:
+        self.after(0, lambda: self._on_progress_message(message, percent))
+
+    def _on_progress_message(self, message: str, percent: float) -> None:
+        self.status_var.set(f"{message} ({percent:.0f}%)")
+        self.progress.configure(value=percent)
+
+    def _run_sync(self, config, project_path: Path) -> None:
         try:
-            config = load_config(Path(self.config_var.get()))
-            config.project_path = self.project_var.get()
+            config.project_path = str(project_path)
             config.engine = self.engine_var.get()
             config.locale = self.locale_var.get()
 
-            run_dir = run_analysis(config=config, workspace_root=self.workspace_root)
+            run_dir = run_analysis(
+                config=config,
+                workspace_root=self.workspace_root,
+                progress_callback=self._progress_update,
+            )
             summary_path = run_dir / "summary.json"
             payload = json.loads(summary_path.read_text(encoding="utf-8"))
 
@@ -177,8 +252,9 @@ class CodevizGui(tk.Tk):
         self.summary_box.delete("1.0", tk.END)
         self.summary_box.insert(tk.END, json.dumps(payload, indent=2, ensure_ascii=False))
 
+        self.progress.configure(value=100)
         self.status_var.set(f"Done: {run_dir}")
-        self.run_btn.configure(state=tk.NORMAL)
+        self._set_busy(False)
 
     def _render_heatmap(self, heatmap: list[dict]) -> None:
         self.heatmap_box.delete("1.0", tk.END)
@@ -220,9 +296,10 @@ class CodevizGui(tk.Tk):
     def _render_error(self, exc: Exception) -> None:
         self._append_log(f"ERROR: {exc}")
         self._append_log(traceback.format_exc())
-        self.status_var.set("Failed")
-        self.run_btn.configure(state=tk.NORMAL)
-        messagebox.showerror("Analysis Failed", str(exc))
+        self._reset_view()
+        self.status_var.set("Failed (reset complete)")
+        self._set_busy(False)
+        messagebox.showerror("Analysis Failed", f"처리를 완료할 수 없어 초기화했습니다.\n\n{exc}")
 
     def _append_log(self, message: str) -> None:
         self.log_box.insert(tk.END, message + "\n")

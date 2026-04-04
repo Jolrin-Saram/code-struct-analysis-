@@ -3,6 +3,7 @@
 import shutil
 from datetime import datetime
 from pathlib import Path
+from typing import Callable
 
 from core.config.schema import AnalysisConfig
 from core.engine.codecharta_engine import CodeChartaEngine
@@ -15,6 +16,9 @@ from core.runner.risk_scan import scan_risks
 from core.runner.validate import build_warnings
 
 
+ProgressCallback = Callable[[str, float], None]
+
+
 def _engine_map():
     return {
         "emerge": EmergeEngine(),
@@ -23,7 +27,29 @@ def _engine_map():
     }
 
 
-def run_analysis(config: AnalysisConfig, workspace_root: Path) -> Path:
+def _emit(progress_callback: ProgressCallback | None, message: str, percent: float) -> None:
+    if progress_callback:
+        clipped = max(0.0, min(100.0, percent))
+        progress_callback(message, clipped)
+
+
+def _phase_progress(
+    progress_callback: ProgressCallback | None,
+    start: float,
+    end: float,
+    ratio: float,
+    message: str,
+) -> None:
+    pct = start + ((end - start) * max(0.0, min(1.0, ratio)))
+    _emit(progress_callback, message, pct)
+
+
+def run_analysis(
+    config: AnalysisConfig,
+    workspace_root: Path,
+    progress_callback: ProgressCallback | None = None,
+) -> Path:
+    _emit(progress_callback, "Validating input paths", 3)
     project_path = config.normalized_project_path()
     if not project_path.exists() or not project_path.is_dir():
         raise ValueError(f"Invalid project_path: {project_path}")
@@ -37,6 +63,7 @@ def run_analysis(config: AnalysisConfig, workspace_root: Path) -> Path:
     run_id = timestamp_id()
     run_dir = runs_root / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
+    _emit(progress_callback, "Preparing run directory", 8)
 
     logger = build_logger(run_dir / "run.log")
     logger.info("Analysis started")
@@ -48,11 +75,23 @@ def run_analysis(config: AnalysisConfig, workspace_root: Path) -> Path:
         raise ValueError(f"Unsupported engine: {config.engine}")
 
     engine = engines[config.engine]
+    _emit(progress_callback, f"Running engine: {config.engine}", 20)
     engine_result = engine.analyze(config, run_dir)
 
-    static_warnings = build_warnings(config)
-    risk_report = scan_risks(config)
+    _emit(progress_callback, "Scanning static warnings", 30)
+    static_warnings = build_warnings(
+        config,
+        progress_callback=lambda ratio, msg: _phase_progress(progress_callback, 30, 55, ratio, msg),
+    )
+
+    _emit(progress_callback, "Scanning risk patterns", 55)
+    risk_report = scan_risks(
+        config,
+        progress_callback=lambda ratio, msg: _phase_progress(progress_callback, 55, 85, ratio, msg),
+    )
     risk_summary = risk_report["summary"]
+
+    _emit(progress_callback, "Building risk flowchart", 88)
     flowchart_text = build_error_flowchart(risk_report["findings"])
     flow_edges = summarize_flow_edges(risk_report["findings"])
 
@@ -84,6 +123,7 @@ def run_analysis(config: AnalysisConfig, workspace_root: Path) -> Path:
         "stderr_tail": engine_result.stderr[-2000:],
     }
 
+    _emit(progress_callback, "Writing reports", 93)
     write_json(run_dir / "summary.json", payload)
     write_json(run_dir / "warnings.json", {"warnings": payload["warnings"]})
     write_json(run_dir / "risk_findings.json", {"findings": risk_report["findings"]})
@@ -104,6 +144,7 @@ def run_analysis(config: AnalysisConfig, workspace_root: Path) -> Path:
     logger.info("Risk findings: %s", risk_summary["total_findings"])
     logger.info("Analysis completed. Run directory: %s", run_dir)
 
+    _emit(progress_callback, "Completed", 100)
     return run_dir
 
 

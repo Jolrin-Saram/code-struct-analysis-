@@ -2,6 +2,7 @@
 
 import re
 from pathlib import Path
+from typing import Callable
 
 from core.config.schema import AnalysisConfig
 
@@ -25,7 +26,10 @@ def _is_code_file(path: Path, config: AnalysisConfig) -> bool:
     return path.suffix.lower() in config.normalized_code_extensions()
 
 
-def build_warnings(config: AnalysisConfig) -> list[str]:
+def build_warnings(
+    config: AnalysisConfig,
+    progress_callback: Callable[[float, str], None] | None = None,
+) -> list[str]:
     project = config.normalized_project_path()
     excludes = config.exclude
     warnings: list[str] = []
@@ -40,15 +44,19 @@ def build_warnings(config: AnalysisConfig) -> list[str]:
     max_depth = 0
     large_file_threshold = config.warning_max_file_size_mb * 1024 * 1024
 
+    candidates: list[Path] = []
     for path in project.rglob("*"):
         if _is_excluded(path, excludes):
             continue
-
         rel_depth = len(path.relative_to(project).parts)
         max_depth = max(max_depth, rel_depth)
+        if _is_code_file(path, config):
+            candidates.append(path)
 
-        if not _is_code_file(path, config):
-            continue
+    total = max(len(candidates), 1)
+    for idx, path in enumerate(candidates, start=1):
+        if progress_callback and (idx % 15 == 0 or idx == total):
+            progress_callback(idx / total, f"Warning scan {idx}/{total}")
 
         try:
             size = path.stat().st_size

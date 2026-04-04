@@ -3,7 +3,7 @@
 import re
 from collections import defaultdict
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from core.config.schema import AnalysisConfig
 
@@ -84,7 +84,10 @@ def _is_comment_line(stripped: str) -> bool:
     return stripped.startswith("//") or stripped.startswith("/*") or stripped.startswith("*") or stripped.startswith("#")
 
 
-def scan_risks(config: AnalysisConfig) -> dict[str, Any]:
+def scan_risks(
+    config: AnalysisConfig,
+    progress_callback: Callable[[float, str], None] | None = None,
+) -> dict[str, Any]:
     project = config.normalized_project_path()
     excludes = config.exclude
     allowed_exts = config.normalized_code_extensions()
@@ -94,6 +97,7 @@ def scan_risks(config: AnalysisConfig) -> dict[str, Any]:
     rule_counts: dict[str, int] = defaultdict(int)
     category_counts: dict[str, int] = defaultdict(int)
 
+    candidates: list[Path] = []
     for path in project.rglob("*"):
         if _is_excluded(path, excludes):
             continue
@@ -101,6 +105,12 @@ def scan_risks(config: AnalysisConfig) -> dict[str, Any]:
             continue
         if config.code_only and path.suffix.lower() not in allowed_exts:
             continue
+        candidates.append(path)
+
+    total = max(len(candidates), 1)
+    for idx, path in enumerate(candidates, start=1):
+        if progress_callback and (idx % 10 == 0 or idx == total):
+            progress_callback(idx / total, f"Risk scan {idx}/{total}")
 
         try:
             content = path.read_text(encoding="utf-8", errors="ignore")
